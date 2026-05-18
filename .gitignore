@@ -1,5 +1,6 @@
 ./data
 hello.txt
+workload.txt
 id_rsa
 id_rsa.pub
 id_ed25519

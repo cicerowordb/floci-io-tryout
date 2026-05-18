@@ -132,3 +132,51 @@ Result: Local EC2 instances running as Docker containers with full SSH access an
 
 References:
 - [https://floci.io/floci/services/ec2/](https://floci.io/floci/services/ec2/)
+
+## AWS EC2 + S3
+
+Objective: Demonstrate seamless integration by uploading data to S3 and retrieving it directly from within a running EC2 instance.
+
+- Step 1: Create an S3 bucket and upload a "workload" file from your host.
+```bash
+aws --endpoint-url http://localhost:4566 s3 mb s3://integration-bucket
+echo "This data was fetched from S3 inside EC2" > workload.txt
+aws --endpoint-url http://localhost:4566 s3 cp workload.txt s3://integration-bucket/workload.txt
+```
+
+- Step 2: Launch an EC2 instance.
+    - Ensure you have imported your SSH key as shown in the **AWS EC2** section.
+```bash
+AWS_EC2_ID=$(aws --endpoint-url http://localhost:4566 ec2 run-instances --image-id ami-000000000001 --instance-type t2.micro --key-name my-key --query 'Instances[0].InstanceId' --output text)
+aws --endpoint-url http://localhost:4566 ec2 wait instance-running --instance-ids $AWS_EC2_ID
+```
+
+- Step 3: Access the S3 bucket from *inside* the EC2 instance.
+    - We use `docker exec` to run the AWS CLI inside the instance container.
+    - **Note**: Inside the container, we use the host's IP or the Floci container name (`floci-aws`) to reach the service.
+```bash
+# Get Floci container IP to ensure reachability from the EC2 container
+FLOCI_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' floci-aws)
+
+# Download the file from S3 using the AWS CLI inside the EC2 instance
+docker exec -it floci-ec2-$AWS_EC2_ID dnf install -y aws-cli
+docker exec -it floci-ec2-$AWS_EC2_ID bash -c '
+        aws configure set aws_access_key_id test;
+        aws configure set aws_secret_access_key test;
+        aws configure set region us-east-1;
+'
+docker exec -it floci-ec2-$AWS_EC2_ID aws --endpoint-url http://$FLOCI_IP:4566 s3 cp s3://integration-bucket/workload.txt /tmp/workload.txt
+docker exec -it floci-ec2-$AWS_EC2_ID cat /tmp/workload.txt
+```
+
+- Step 4: Clean up resources.
+```bash
+aws --endpoint-url http://localhost:4566 ec2 terminate-instances --instance-ids $AWS_EC2_ID
+aws --endpoint-url http://localhost:4566 s3 rb s3://integration-bucket --force
+```
+
+Result: Verified end-to-end integration between compute (EC2) and storage (S3) services running locally. The EC2 instance successfully retrieved and processed data stored in S3, simulating a real-world cloud architecture.
+
+References:
+- [https://floci.io/floci/services/ec2/](https://floci.io/floci/services/ec2/)
+- [https://floci.io/floci/services/s3/](https://floci.io/floci/services/s3/)
