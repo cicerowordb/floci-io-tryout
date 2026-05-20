@@ -180,3 +180,47 @@ Result: Verified end-to-end integration between compute (EC2) and storage (S3) s
 References:
 - [https://floci.io/floci/services/ec2/](https://floci.io/floci/services/ec2/)
 - [https://floci.io/floci/services/s3/](https://floci.io/floci/services/s3/)
+
+## S3 + Lambda + SQS + DynamoDB + API Gateway flow
+
+This section demonstrates a complete serverless event-driven architecture running locally. It simulates a data ingestion pipeline where a CSV file uploaded to S3 triggers a chain of events, ultimately storing the data in DynamoDB and making it accessible via an API. For a deep dive into the implementation details, please consult the `scripts/01-run-lambda-flow.sh` script.
+
+```text
+peolpe.csv ──► S3 Bucket ──► trigger ──► Lambda ──► SQS ──► trigger  ──► Lambda ──► DynamoDB
+```
+
+```text
+API Gateway ───► Lambda ───► DynamoDB
+    JSON ◄─────────┘
+```
+
+Requisites:
+- Change `WSL_IP` inside `./scripts/run-lambda-flow` to the IP where you are runing your Docker service. I am running inside WSL.
+
+Execution:
+```bash
+bash scripts/01-run-lambda-flow.sh
+```
+
+The script automates the entire setup: creating the Floci container, provisioning S3 buckets, SQS queues, DynamoDB tables, and deploying Python-based Lambda functions with their respective triggers. Upon completion, you will see logs confirming the successful ingestion of `people.csv` data into DynamoDB and a final verification step that queries the data through the API Gateway endpoint. To tear down the environment, you can stop and remove the Floci Docker container (`docker rm --force floci-aws`). 
+
+The script uses `WSL_IP` (defaulting to `172.22.185.230`) to facilitate communication between the host and the services running inside the Docker network. When running in your own environment, ensure `WSL_IP` matches your host's IP address on the network shared with Docker, or `localhost` if your setup supports it.
+
+Some useful commands to check the AWS/Floci resources by using `aws` command:
+
+```bash
+WSL_IP="172.22.185.230"
+# === List S3 Buckets and Files ===
+aws --endpoint-url http://$WSL_IP:4566 s3 ls
+aws --endpoint-url http://$WSL_IP:4566 s3 ls s3://people-s3-bucket
+# === List Lambda Functions ===
+aws --endpoint-url http://$WSL_IP:4566 lambda list-functions|grep '"FunctionName":'|tr -s ' ' ' '
+# === List Lambda Event Mappins (Source=SQS / Triggers=Lambda people-sqs-queue)===
+aws --endpoint-url http://$WSL_IP:4566 lambda  list-event-source-mappings
+# === List API Gateways ===
+aws --endpoint-url http://$WSL_IP:4566 apigateway get-rest-apis
+# === List SQS Gateways ===
+aws --endpoint-url http://$WSL_IP:4566 sqs list-queues
+# === List DynamoDB Tables ===
+aws --endpoint-url http://$WSL_IP:4566 dynamodb list-tables
+```
